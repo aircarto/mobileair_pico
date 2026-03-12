@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0] - 2026-03-12
+
+### Ajouté
+- Capteur PM NextPM via Modbus RTU sur UART0 (GP0 TX, GP1 RX, 115200 8E1)
+  - Lecture PM1.0, PM2.5, PM10, température et humidité internes
+  - Implémentation Modbus RTU from scratch (CRC16, function 0x03)
+  - Lecture automatique toutes les 30s en mode connecté
+- Carte "Capteur PM" sur la page status avec les dernières mesures
+- Système de logs web : stdio driver custom capturant tous les printf
+  - Ring buffer 100 lignes avec suppression automatique des codes ANSI
+  - Carte "Logs" sur la page status avec zone scrollable et bouton rafraîchir
+  - Endpoint `/logs` retournant les logs en texte brut
+  - Fonctionne même sans USB connecté
+- Bouton rafraîchir (🔄) sur le titre de la page status (remplacement de l'auto-refresh)
+- Documentation câblage NextPM dans le README
+
+### Technique
+- UART0 en mode 8E1 (parité paire) pour compatibilité Modbus RTU NextPM
+- Formatage PM en arithmétique entière (pas de dépendance pico_printf_float)
+- Buffers page status augmentés (body 8KB, page 9KB) pour les nouvelles cartes
+
 ## [0.3.0] - 2026-03-12
 
 ### Ajouté

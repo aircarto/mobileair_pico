@@ -42,6 +42,8 @@ add_executable(mobileair_pico
     src/portal/dns_server.cpp
     src/portal/dhcp_server.c
     src/modem/modem.cpp
+    src/sensors/nextpm.cpp
+    src/logger.cpp
 )
 
 target_include_directories(mobileair_pico PRIVATE

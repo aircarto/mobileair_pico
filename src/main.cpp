@@ -8,6 +8,8 @@
 #include "wifi/wifi_credentials.h"
 #include "portal/captive_portal.h"
 #include "modem/modem.h"
+#include "sensors/nextpm.h"
+#include "logger.h"
 #include "lwip/apps/mdns.h"
 #include <cstdio>
 #include <cstring>
@@ -170,6 +172,7 @@ static void update_networks_html() {
 
 int main() {
     stdio_init_all();
+    logger::init();
 
     // Wait until USB serial is connected (terminal open)
     // Timeout after 5s to allow headless operation
@@ -186,6 +189,10 @@ int main() {
     // --- Modem check ---
     modem::init();
     modem::check();
+    printf("\n");
+
+    // --- NextPM sensor ---
+    nextpm::init();
     printf("\n");
 
     // Press 'r' within 3s to erase WiFi credentials and force portal
@@ -317,26 +324,42 @@ int main() {
             start_mdns();
 
             // Main application loop
-            while (true) {
-                wifi_manager::poll();
+            {
+                uint32_t next_sensor_read = 0;
+                while (true) {
+                    wifi_manager::poll();
 
-                if (!wifi_manager::is_connected()) {
-                    printf(ANSI_BYELLOW "[main] WiFi disconnected, retrying...\n" ANSI_RESET);
-                    s_state = AppState::TRY_CONNECT;
-                    break;
-                }
-
-                if (captive_portal::should_reboot()) {
-                    printf("[main] Rebooting via web UI...\n");
-                    // Poll a few times to let the response be sent
-                    for (int i = 0; i < 10; i++) {
-                        wifi_manager::poll();
+                    if (!wifi_manager::is_connected()) {
+                        printf(ANSI_BYELLOW "[main] WiFi disconnected, retrying...\n" ANSI_RESET);
+                        s_state = AppState::TRY_CONNECT;
+                        break;
                     }
-                    watchdog_reboot(0, 0, 100);
-                }
 
-                // TODO: sensor reading, data upload, etc.
-                wifi_manager::poll();
+                    if (captive_portal::should_reboot()) {
+                        printf("[main] Rebooting via web UI...\n");
+                        for (int i = 0; i < 10; i++) {
+                            wifi_manager::poll();
+                        }
+                        watchdog_reboot(0, 0, 100);
+                    }
+
+                    // Read NextPM every 30 seconds
+                    uint32_t now = to_ms_since_boot(get_absolute_time());
+                    if (now >= next_sensor_read) {
+                        nextpm::Data pm = nextpm::read();
+                        if (pm.ok) {
+                            printf("[nextpm] PM1=%.1f PM2.5=%.1f PM10=%.1f ug/m3"
+                                   "  T=%.1fC H=%.1f%%\n",
+                                   pm.pm1, pm.pm25, pm.pm10,
+                                   pm.temperature, pm.humidity);
+                        } else {
+                            printf("[nextpm] Read failed\n");
+                        }
+                        next_sensor_read = now + 30000;
+                    }
+
+                    wifi_manager::poll();
+                }
             }
             break;
         }

@@ -3,6 +3,8 @@
 #include "dhcp_server.h"
 #include "../wifi/wifi_manager.h"
 #include "../modem/modem.h"
+#include "../sensors/nextpm.h"
+#include "../logger.h"
 
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
@@ -140,7 +142,6 @@ static const char STATUS_PAGE_FMT[] =
     "<html lang=\"fr\"><head>"
     "<meta charset=\"UTF-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    "<meta http-equiv=\"refresh\" content=\"30\">"
     "<title>MobileAir</title>"
     "<style>"
     "*{box-sizing:border-box;margin:0;padding:0}"
@@ -165,8 +166,13 @@ static const char STATUS_PAGE_FMT[] =
     "button:disabled{background:#555;cursor:not-allowed}"
     ".ft{text-align:center;color:#555;font-size:0.75em;margin-top:24px;grid-column:1/-1}"
     ".act{grid-column:1/-1}"
+    ".ref{background:none;border:none;color:#00d4ff;font-size:1.4em;cursor:pointer;"
+    "padding:4px 8px;margin:0;width:auto;transition:transform 0.3s}"
+    ".ref:hover{transform:rotate(180deg)}"
     "</style></head><body><div class=\"c\">"
-    "<div class=\"hdr\"><h1>MobileAir</h1>"
+    "<div class=\"hdr\"><h1>MobileAir "
+    "<button class=\"ref\" onclick=\"location.reload()\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+    "</h1>"
     "<p class=\"sub\">Tableau de bord</p></div>"
     "<div class=\"grid\">"
 
@@ -187,6 +193,14 @@ static const char STATUS_PAGE_FMT[] =
     "<div class=\"r\"><span class=\"l\">Uptime</span><span class=\"v\">%s</span></div>"
     "</div>"
 
+    "<div class=\"cd\"><h2>&#127777; Capteur PM</h2>"
+    "<div class=\"r\"><span class=\"l\">PM1.0</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+    "<div class=\"r\"><span class=\"l\">PM2.5</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+    "<div class=\"r\"><span class=\"l\">PM10</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+    "<div class=\"r\"><span class=\"l\">Temp (int.)</span><span class=\"v\">%s &deg;C</span></div>"
+    "<div class=\"r\"><span class=\"l\">Humidit&eacute;</span><span class=\"v\">%s %%</span></div>"
+    "</div>"
+
     "<div class=\"cd\"><h2>&#128225; Modem</h2>"
     "<div class=\"r\"><span class=\"l\">Modem</span>"
     "<span class=\"v\" id=\"ms\">&mdash;</span></div>"
@@ -203,6 +217,14 @@ static const char STATUS_PAGE_FMT[] =
     "<button type=\"button\" onclick=\"toggleLed()\" id=\"lb\" "
     "style=\"background:#00d4ff;color:#1a1a2e;margin-top:8px\">"
     "Activer LED status</button>"
+    "</div>"
+
+    "<div class=\"cd act\"><h2>&#128196; Logs "
+    "<button class=\"ref\" onclick=\"loadLogs()\" id=\"logr\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+    "</h2>"
+    "<pre id=\"logbox\" style=\"max-height:300px;overflow-y:auto;background:#1a1a2e;"
+    "padding:10px;border-radius:8px;font-size:0.8em;color:#aaa;white-space:pre-wrap;"
+    "word-break:break-all;margin:0\">Cliquez sur &#x1F504; pour charger les logs</pre>"
     "</div>"
 
     "<form method=\"POST\" action=\"/reboot\" class=\"act\">"
@@ -243,6 +265,15 @@ static const char STATUS_PAGE_FMT[] =
     "s.textContent='Erreur r\\u00e9seau';s.className='v';"
     "b.disabled=false;b.textContent='Activer LED status';"
     "});}"
+    "function loadLogs(){"
+    "var box=document.getElementById('logbox');"
+    "box.textContent='Chargement...';"
+    "fetch('/logs').then(function(x){return x.text()}).then(function(t){"
+    "box.textContent=t||'(aucun log)';"
+    "box.scrollTop=box.scrollHeight;"
+    "}).catch(function(){"
+    "box.textContent='Erreur de chargement';"
+    "});}"
     "</script>"
 
     "</div></body></html>";
@@ -266,7 +297,7 @@ static const char REBOOT_PAGE_BODY[] =
 // =====================================================================
 
 // Large buffer for composing pages
-static char s_page_buf[8192];
+static char s_page_buf[9216];
 static int s_page_buf_len = 0;
 
 // Build HTTP response with headers included
@@ -285,7 +316,7 @@ static int compose_http_response(char* buf, int buf_size, const char* body, int 
 }
 
 // Temporary buffer for HTML body before adding headers
-static char s_body_tmp[7000];
+static char s_body_tmp[8000];
 
 static void compose_index_page() {
     char* p = s_body_tmp;
@@ -397,6 +428,29 @@ static void compose_status_page() {
     const char* cpu = "RP2040 (Cortex-M0+)";
 #endif
 
+    // PM sensor values (integer formatting to avoid float printf dependency)
+    const nextpm::Data& pm = nextpm::get_last();
+    char pm1_str[16], pm25_str[16], pm10_str[16], pmt_str[16], pmh_str[16];
+    const char* pm1_cls  = "";
+    const char* pm25_cls = "";
+    const char* pm10_cls = "";
+
+    if (pm.ok) {
+        int v;
+        v = (int)(pm.pm1 * 10); snprintf(pm1_str, sizeof(pm1_str), "%d.%d", v / 10, v % 10);
+        v = (int)(pm.pm25 * 10); snprintf(pm25_str, sizeof(pm25_str), "%d.%d", v / 10, v % 10);
+        v = (int)(pm.pm10 * 10); snprintf(pm10_str, sizeof(pm10_str), "%d.%d", v / 10, v % 10);
+        v = (int)(pm.temperature * 10); snprintf(pmt_str, sizeof(pmt_str), "%d.%d", v / 10, v % 10);
+        v = (int)(pm.humidity * 10); snprintf(pmh_str, sizeof(pmh_str), "%d.%d", v / 10, v % 10);
+        pm1_cls = "ok"; pm25_cls = "ok"; pm10_cls = "ok";
+    } else {
+        snprintf(pm1_str, sizeof(pm1_str), "&mdash;");
+        snprintf(pm25_str, sizeof(pm25_str), "&mdash;");
+        snprintf(pm10_str, sizeof(pm10_str), "&mdash;");
+        snprintf(pmt_str, sizeof(pmt_str), "&mdash;");
+        snprintf(pmh_str, sizeof(pmh_str), "&mdash;");
+    }
+
     int body_len = snprintf(s_body_tmp, sizeof(s_body_tmp), STATUS_PAGE_FMT,
         s_status_ssid,
         signal, rssi,
@@ -409,7 +463,12 @@ static void compose_status_page() {
         PICO_FLASH_SIZE_BYTES / 1024,
         (unsigned long)(heap_free / 1024),
         (unsigned long)(total_heap / 1024),
-        uptime_str);
+        uptime_str,
+        pm1_cls, pm1_str,
+        pm25_cls, pm25_str,
+        pm10_cls, pm10_str,
+        pmt_str,
+        pmh_str);
 
     if (body_len < 0) body_len = 0;
     if (body_len >= (int)sizeof(s_body_tmp)) body_len = sizeof(s_body_tmp) - 1;
@@ -422,6 +481,29 @@ static void compose_reboot_page() {
     int body_len = sizeof(REBOOT_PAGE_BODY) - 1;
     s_result_buf_len = compose_http_response(s_result_buf, sizeof(s_result_buf),
                                               REBOOT_PAGE_BODY, body_len);
+}
+
+// --- Logs plain text response ---
+// 100 lines x ~160 chars + HTTP headers
+static char s_logs_buf[18000];
+static int s_logs_buf_len = 0;
+
+static void compose_logs_response() {
+    // Get log lines into a temp area
+    char body[17000];
+    int body_len = logger::get_lines(body, sizeof(body));
+
+    s_logs_buf_len = snprintf(s_logs_buf, sizeof(s_logs_buf),
+        "HTTP/1.0 200 OK\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "\r\n", body_len);
+
+    if (s_logs_buf_len + body_len < (int)sizeof(s_logs_buf)) {
+        memcpy(s_logs_buf + s_logs_buf_len, body, body_len);
+        s_logs_buf_len += body_len;
+    }
 }
 
 // --- Modem test JSON response ---
@@ -591,6 +673,12 @@ int fs_open_custom(struct fs_file* file, const char* name) {
         if (strcmp(name, "/led-test") == 0) {
             compose_led_test_response();
             file_serve(file, s_modem_json_buf, s_modem_json_len);
+            return 1;
+        }
+
+        if (strcmp(name, "/logs") == 0) {
+            compose_logs_response();
+            file_serve(file, s_logs_buf, s_logs_buf_len);
             return 1;
         }
 

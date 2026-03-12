@@ -43,7 +43,9 @@ Le fichier `build/mobileair_pico.uf2` est généré à la fin du build.
 
 > **Note :** le bouton BOOTSEL n'est nécessaire que si le Pico n'est pas déjà en mode bootloader. Si le lecteur `RP2350` n'apparaît pas, débrancher le Pico, maintenir BOOTSEL, puis rebrancher.
 
-## Câblage modem SARA-R500S
+## Câblage
+
+### Modem SARA-R500S
 
 | Signal | Pin Pico | GPIO |
 |--------|----------|------|
@@ -51,6 +53,15 @@ Le fichier `build/mobileair_pico.uf2` est généré à la fin du build.
 | RX (SARA → Pico) | Pin 7 | GP5 |
 
 UART1, 115200 baud, 8N1, pas de flow control matériel.
+
+### Capteur PM NextPM
+
+| Signal | Pin Pico | GPIO |
+|--------|----------|------|
+| TX (Pico → NextPM) | Pin 1 | GP0 |
+| RX (NextPM → Pico) | Pin 2 | GP1 |
+
+UART0, 115200 baud, 8E1 (parité paire), Modbus RTU adresse 1.
 
 ## Consultation des logs série (PuTTY)
 
