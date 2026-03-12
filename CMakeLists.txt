@@ -1,3 +1,19 @@
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.2.0)
+set(toolchainVersion 14_2_Rel1)
+set(picotoolVersion 2.2.0)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
+set(PICO_BOARD pico2_w CACHE STRING "Board type")
+
 cmake_minimum_required(VERSION 3.13)
 
 # Pull in SDK (must be before project())
@@ -20,15 +36,31 @@ pico_sdk_init()
 
 add_executable(mobileair_pico
     src/main.cpp
+    src/wifi/wifi_manager.cpp
+    src/wifi/wifi_credentials.cpp
+    src/portal/captive_portal.cpp
+    src/portal/dns_server.cpp
+    src/portal/dhcp_server.c
+    src/modem/modem.cpp
 )
 
 target_include_directories(mobileair_pico PRIVATE
     ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/src
 )
 
-# Link pico standard library
+# Link pico standard library + board info libs
 target_link_libraries(mobileair_pico
     pico_stdlib
+    pico_unique_id
+    hardware_watchdog
+    hardware_clocks
+    hardware_flash
+    hardware_sync
+    hardware_uart
+    pico_cyw43_arch_lwip_poll
+    pico_lwip_http
+    pico_lwip_mdns
 )
 
 # Enable USB serial output, disable UART serial output

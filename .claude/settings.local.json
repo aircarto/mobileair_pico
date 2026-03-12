@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"PICO_SDK_PATH=$PICO_SDK_PATH\")",
+      "Read(//c/Users/Paul/.pico-sdk/**)",
+      "Read(//c/Users/Paul/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(wmic logicaldisk:*)",
+      "Bash(where ninja:*)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0\" -type d -name \"*example*\" 2>/dev/null | head -10)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0\" -type f -name \"*wifi*\" -o -name \"*ap*\" -o -name \"*dhcp*\" -o -name \"*dns*\" 2>/dev/null | head -20)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0/examples\" -type f -name \"*wifi*\" 2>/dev/null | head -20)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0/lib/lwip\" -name \"*.h\" -path \"*/apps/*\" 2>/dev/null | grep -E \"\\(dns|http\\)\" | head -10)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0\" -type f -path \"*/examples/pico_w*\" -name \"*.c\" 2>/dev/null | head -20)",
+      "Bash(find \"C:/Users/Paul/.pico-sdk/sdk/2.2.0/src/rp2_common/pico_lwip\" -type f -name \"*.h\" 2>/dev/null | head -20)"
+    ]
+  }
+}
