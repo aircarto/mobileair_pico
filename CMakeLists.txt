@@ -8,11 +8,22 @@ project(mobileair_pico C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Firmware version
+include(${CMAKE_SOURCE_DIR}/version.cmake)
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/version.h
+)
+
 # Initialize the SDK
 pico_sdk_init()
 
 add_executable(mobileair_pico
     src/main.cpp
+)
+
+target_include_directories(mobileair_pico PRIVATE
+    ${CMAKE_BINARY_DIR}/generated
 )
 
 # Link pico standard library
