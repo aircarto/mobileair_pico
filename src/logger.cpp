@@ -24,7 +24,8 @@ static void flush_line() {
             s_cur_line[s_cur_pos - 1] == '\r')) {
         s_cur_pos--;
     }
-    s_cur_line[s_cur_pos] = '\0';
+    if (s_cur_pos >= 0 && s_cur_pos < LOG_LINE_LEN)
+        s_cur_line[s_cur_pos] = '\0';
 
     // Skip ANSI escape sequences for web display
     char* dst = s_lines[s_head];
@@ -63,10 +64,12 @@ static stdio_driver_t s_log_driver = {
     .out_chars = log_out_chars,
     .out_flush = nullptr,
     .in_chars = nullptr,
+    .set_chars_available_callback = nullptr,
+    .next = nullptr,
 #if PICO_STDIO_ENABLE_CRLF_SUPPORT
+    .last_ended_with_cr = false,
     .crlf_enabled = false,
 #endif
-    .next = nullptr,
 };
 
 namespace logger {
