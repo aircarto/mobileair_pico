@@ -44,7 +44,7 @@ static char s_networks_html[4096] = {};
 static int s_networks_html_len = 0;
 
 // =====================================================================
-// Portal page (AP mode) — WiFi configuration
+// Portal page (AP mode) — WiFi configuration tab
 // =====================================================================
 
 static const char PAGE_HEADER[] = R"(<!DOCTYPE html>
@@ -73,6 +73,11 @@ button:disabled{background:#555;cursor:not-allowed}
 .msg-ok{color:#00ff88;text-align:center;padding:16px}
 .msg-err{color:#ff6b6b;text-align:center;padding:16px}
 .scanning{text-align:center;color:#888;padding:20px}
+.tabs{display:flex;margin-bottom:20px}
+.tab{flex:1;text-align:center;padding:12px;text-decoration:none;color:#888;background:#1a1a2e;border:1px solid #0f3460;font-weight:500;transition:all 0.2s}
+.tab:first-child{border-radius:8px 0 0 8px}.tab:last-child{border-radius:0 8px 8px 0}
+.tab.active{color:#00d4ff;background:#16213e;border-color:#00d4ff;font-weight:700}
+.tab:hover{color:#00d4ff}
 .footer{text-align:center;color:#555;font-size:0.75em;margin-top:24px}
 </style></head><body><div class="container">
 <h1>MobileAir</h1>
@@ -133,11 +138,24 @@ static const char PAGE_RESULT_CLOSE[] = R"(</p>
 <a href="/"><button>R&eacute;essayer</button></a>
 )";
 
+// Tab navigation for portal mode
+static const char TABS_WIFI[] =
+    "<div class=\"tabs\">"
+    "<a href=\"/\" class=\"tab active\">&#128246; WiFi</a>"
+    "<a href=\"/diag\" class=\"tab\">&#9881; Diagnostic</a>"
+    "</div>";
+
+static const char TABS_DIAG[] =
+    "<div class=\"tabs\">"
+    "<a href=\"/\" class=\"tab\">&#128246; WiFi</a>"
+    "<a href=\"/diag\" class=\"tab active\">&#9881; Diagnostic</a>"
+    "</div>";
+
 // =====================================================================
-// Status page (STA mode) — Dashboard
+// Dashboard page (shared between AP diagnostic tab and connected mode)
 // =====================================================================
 
-static const char STATUS_PAGE_FMT[] =
+static const char DASH_HEAD[] =
     "<!DOCTYPE html>"
     "<html lang=\"fr\"><head>"
     "<meta charset=\"UTF-8\">"
@@ -146,10 +164,16 @@ static const char STATUS_PAGE_FMT[] =
     "<style>"
     "*{box-sizing:border-box;margin:0;padding:0}"
     "body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;min-height:100vh;padding:20px}"
-    ".c{max-width:900px;width:100%%;margin:0 auto}"
+    ".c{max-width:900px;width:100%;margin:0 auto}"
     ".hdr{text-align:center;margin-bottom:24px}"
     "h1{color:#00d4ff;margin:20px 0 8px;font-size:1.5em}"
     ".sub{color:#888;font-size:0.9em}"
+    ".tabs{display:flex;margin-bottom:20px}"
+    ".tab{flex:1;text-align:center;padding:12px;text-decoration:none;color:#888;background:#1a1a2e;"
+    "border:1px solid #0f3460;font-weight:500;transition:all 0.2s}"
+    ".tab:first-child{border-radius:8px 0 0 8px}.tab:last-child{border-radius:0 8px 8px 0}"
+    ".tab.active{color:#00d4ff;background:#16213e;border-color:#00d4ff;font-weight:700}"
+    ".tab:hover{color:#00d4ff}"
     ".grid{display:grid;grid-template-columns:1fr;gap:16px}"
     "@media(min-width:600px){.grid{grid-template-columns:repeat(2,1fr)}}"
     "@media(min-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}"
@@ -159,81 +183,53 @@ static const char STATUS_PAGE_FMT[] =
     ".r:last-child{border-bottom:none}"
     ".l{color:#888}.v{color:#e0e0e0;font-weight:500}"
     ".ok{color:#00ff88}"
-    "button{width:100%%;padding:14px;border-radius:8px;border:none;"
-    "background:#ff6b6b;color:#fff;font-size:1em;font-weight:700;"
-    "cursor:pointer;margin-top:16px;transition:background 0.2s}"
-    "button:hover{background:#ff5252}"
+    "button{width:100%;padding:14px;border-radius:8px;border:none;"
+    "background:#00d4ff;color:#1a1a2e;font-size:1em;font-weight:700;"
+    "cursor:pointer;margin-top:8px;transition:background 0.2s}"
+    "button:hover{background:#00b8d9}"
     "button:disabled{background:#555;cursor:not-allowed}"
+    ".btn-reboot{background:#ff6b6b;color:#fff;margin-top:16px}"
+    ".btn-reboot:hover{background:#ff5252}"
     ".ft{text-align:center;color:#555;font-size:0.75em;margin-top:24px;grid-column:1/-1}"
     ".act{grid-column:1/-1}"
     ".ref{background:none;border:none;color:#00d4ff;font-size:1.4em;cursor:pointer;"
     "padding:4px 8px;margin:0;width:auto;transition:transform 0.3s}"
     ".ref:hover{transform:rotate(180deg)}"
-    "</style></head><body><div class=\"c\">"
-    "<div class=\"hdr\"><h1>MobileAir "
-    "<button class=\"ref\" onclick=\"location.reload()\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
-    "</h1>"
-    "<p class=\"sub\">Tableau de bord</p></div>"
-    "<div class=\"grid\">"
+    "</style></head><body><div class=\"c\">";
 
-    "<div class=\"cd\"><h2>&#128225; WiFi</h2>"
-    "<div class=\"r\"><span class=\"l\">SSID</span><span class=\"v\">%s</span></div>"
-    "<div class=\"r\"><span class=\"l\">Signal</span><span class=\"v\">%s %d dBm</span></div>"
-    "<div class=\"r\"><span class=\"l\">IP</span><span class=\"v ok\">%s</span></div>"
-    "</div>"
-
-    "<div class=\"cd\"><h2>&#9881; Syst&egrave;me</h2>"
-    "<div class=\"r\"><span class=\"l\">Board</span><span class=\"v\">%s</span></div>"
-    "<div class=\"r\"><span class=\"l\">ID</span><span class=\"v\" style=\"font-size:0.75em\">%s</span></div>"
-    "<div class=\"r\"><span class=\"l\">Firmware</span><span class=\"v\">v%s</span></div>"
-    "<div class=\"r\"><span class=\"l\">CPU</span><span class=\"v\">%s</span></div>"
-    "<div class=\"r\"><span class=\"l\">Horloge</span><span class=\"v\">%u MHz</span></div>"
-    "<div class=\"r\"><span class=\"l\">Flash</span><span class=\"v\">%u KB</span></div>"
-    "<div class=\"r\"><span class=\"l\">Heap libre</span><span class=\"v ok\">%lu / %lu KB</span></div>"
-    "<div class=\"r\"><span class=\"l\">Uptime</span><span class=\"v\">%s</span></div>"
-    "</div>"
-
-    "<div class=\"cd\"><h2>&#127777; Capteur PM</h2>"
-    "<div class=\"r\"><span class=\"l\">PM1.0</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
-    "<div class=\"r\"><span class=\"l\">PM2.5</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
-    "<div class=\"r\"><span class=\"l\">PM10</span><span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
-    "<div class=\"r\"><span class=\"l\">Temp (int.)</span><span class=\"v\">%s &deg;C</span></div>"
-    "<div class=\"r\"><span class=\"l\">Humidit&eacute;</span><span class=\"v\">%s %%</span></div>"
-    "</div>"
-
+static const char DASH_MODEM_CARD[] =
     "<div class=\"cd\"><h2>&#128225; Modem</h2>"
     "<div class=\"r\"><span class=\"l\">Modem</span>"
     "<span class=\"v\" id=\"ms\">&mdash;</span></div>"
     "<div class=\"r\"><span class=\"l\">Carte SIM</span>"
     "<span class=\"v\" id=\"ss\">&mdash;</span></div>"
-    "<button type=\"button\" onclick=\"testModem()\" id=\"mb\" "
-    "style=\"background:#00d4ff;color:#1a1a2e;margin-top:8px\">"
+    "<button type=\"button\" onclick=\"testModem()\" id=\"mb\">"
     "Tester le modem</button>"
-    "<button type=\"button\" onclick=\"testSim()\" id=\"sb\" "
-    "style=\"background:#00d4ff;color:#1a1a2e;margin-top:8px\">"
+    "<button type=\"button\" onclick=\"testSim()\" id=\"sb\">"
     "Tester carte SIM</button>"
     "<div class=\"r\" style=\"margin-top:8px\"><span class=\"l\">LED status</span>"
     "<span class=\"v\" id=\"ls\">&mdash;</span></div>"
-    "<button type=\"button\" onclick=\"toggleLed()\" id=\"lb\" "
-    "style=\"background:#00d4ff;color:#1a1a2e;margin-top:8px\">"
+    "<button type=\"button\" onclick=\"toggleLed()\" id=\"lb\">"
     "Activer LED status</button>"
-    "</div>"
+    "</div>";
 
+static const char DASH_LOGS_CARD[] =
     "<div class=\"cd act\"><h2>&#128196; Logs "
-    "<button class=\"ref\" onclick=\"loadLogs()\" id=\"logr\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+    "<button class=\"ref\" onclick=\"loadLogs()\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
     "</h2>"
     "<pre id=\"logbox\" style=\"max-height:300px;overflow-y:auto;background:#1a1a2e;"
     "padding:10px;border-radius:8px;font-size:0.8em;color:#aaa;white-space:pre-wrap;"
     "word-break:break-all;margin:0\">Cliquez sur &#x1F504; pour charger les logs</pre>"
-    "</div>"
+    "</div>";
 
+static const char DASH_REBOOT[] =
     "<form method=\"POST\" action=\"/reboot\" class=\"act\">"
-    "<button type=\"submit\" onclick=\"return confirm('Red\\u00e9marrer le Pico ?')\">"
+    "<button type=\"submit\" class=\"btn-reboot\" "
+    "onclick=\"return confirm('Red\\u00e9marrer le Pico ?')\">"
     "&#x1F504; Red&eacute;marrer</button>"
-    "</form>"
-    "<div class=\"ft\">MobileAir by AirCarto &bull; mobileair.local</div>"
-    "</div>"
+    "</form>";
 
+static const char DASH_JS[] =
     "<script>"
     "function testModem(){"
     "var b=document.getElementById('mb'),s=document.getElementById('ms');"
@@ -274,10 +270,9 @@ static const char STATUS_PAGE_FMT[] =
     "}).catch(function(){"
     "box.textContent='Erreur de chargement';"
     "});}"
-    "</script>"
+    "</script>";
 
-    "</div></body></html>";
-
+// Reboot in-progress page
 static const char REBOOT_PAGE_BODY[] =
     "<!DOCTYPE html><html lang=\"fr\"><head>"
     "<meta charset=\"UTF-8\">"
@@ -330,6 +325,7 @@ static void compose_index_page() {
     };
 
     append(PAGE_HEADER, sizeof(PAGE_HEADER) - 1);
+    append(TABS_WIFI, strlen(TABS_WIFI));
     append(PAGE_FORM_PRE, sizeof(PAGE_FORM_PRE) - 1);
 
     if (s_networks_html_len > 0) {
@@ -380,97 +376,178 @@ static void compose_result_page() {
                                               s_body_tmp, body_len);
 }
 
-static void compose_status_page() {
-    // Board ID
-    char board_id[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];
-    pico_get_unique_board_id_string(board_id, sizeof(board_id));
+// =====================================================================
+// Unified dashboard builder (AP diagnostic tab + connected dashboard)
+// =====================================================================
 
-    // Heap
-    extern char __StackLimit, __bss_end__;
-    uint32_t total_heap = &__StackLimit - &__bss_end__;
-    struct mallinfo mi = mallinfo();
-    uint32_t heap_free = total_heap - (uint32_t)mi.uordblks;
+static void compose_dashboard(bool is_ap_mode) {
+    char* p = s_body_tmp;
+    int rem = sizeof(s_body_tmp) - 1;
+    int n;
 
-    // Uptime
-    uint64_t uptime_ms = to_ms_since_boot(get_absolute_time());
-    uint32_t up_sec = (uint32_t)(uptime_ms / 1000);
-    char uptime_str[32];
-    if (up_sec >= 3600) {
-        snprintf(uptime_str, sizeof(uptime_str), "%luh %lum %lus",
-                 (unsigned long)(up_sec / 3600),
-                 (unsigned long)((up_sec % 3600) / 60),
-                 (unsigned long)(up_sec % 60));
-    } else if (up_sec >= 60) {
-        snprintf(uptime_str, sizeof(uptime_str), "%lum %lus",
-                 (unsigned long)(up_sec / 60),
-                 (unsigned long)(up_sec % 60));
-    } else {
-        snprintf(uptime_str, sizeof(uptime_str), "%lus", (unsigned long)up_sec);
+    // Append helpers
+    #define APP(s) do { int _l=(int)strlen(s); if(_l>rem)_l=rem; memcpy(p,s,_l); p+=_l; rem-=_l; } while(0)
+    #define APPF(...) do { n=snprintf(p,rem,__VA_ARGS__); if(n>0&&n<rem){p+=n;rem-=n;} } while(0)
+
+    // --- Head + styles ---
+    APP(DASH_HEAD);
+
+    // --- Header ---
+    APPF("<div class=\"hdr\"><h1>MobileAir "
+         "<button class=\"ref\" onclick=\"location.reload()\" "
+         "title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+         "</h1><p class=\"sub\">%s</p></div>",
+         is_ap_mode ? "Diagnostic" : "Tableau de bord");
+
+    // --- Tabs (AP mode only) ---
+    if (is_ap_mode) {
+        APP(TABS_DIAG);
     }
 
-    // WiFi RSSI
-    int rssi = wifi_manager::get_sta_rssi();
-    const char* signal;
-    if (rssi > -50) signal = "&#9679;&#9679;&#9679;&#9679;";
-    else if (rssi > -60) signal = "&#9679;&#9679;&#9679;&#9675;";
-    else if (rssi > -70) signal = "&#9679;&#9679;&#9675;&#9675;";
-    else signal = "&#9679;&#9675;&#9675;&#9675;";
+    // --- Open grid ---
+    APP("<div class=\"grid\">");
 
-    // IP
-    const ip4_addr_t* ip = netif_ip4_addr(netif_default);
-    char ip_str[16];
-    snprintf(ip_str, sizeof(ip_str), "%s", ip4addr_ntoa(ip));
+    // --- WiFi card (connected mode only) ---
+    if (!is_ap_mode) {
+        int rssi = wifi_manager::get_sta_rssi();
+        const char* signal;
+        if (rssi > -50)      signal = "&#9679;&#9679;&#9679;&#9679;";
+        else if (rssi > -60) signal = "&#9679;&#9679;&#9679;&#9675;";
+        else if (rssi > -70) signal = "&#9679;&#9679;&#9675;&#9675;";
+        else                 signal = "&#9679;&#9675;&#9675;&#9675;";
 
-    // CPU
+        const ip4_addr_t* ip = netif_ip4_addr(netif_default);
+        char ip_str[16];
+        snprintf(ip_str, sizeof(ip_str), "%s", ip4addr_ntoa(ip));
+
+        APPF("<div class=\"cd\"><h2>&#128225; WiFi</h2>"
+             "<div class=\"r\"><span class=\"l\">SSID</span><span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Signal</span><span class=\"v\">%s %d dBm</span></div>"
+             "<div class=\"r\"><span class=\"l\">IP</span><span class=\"v ok\">%s</span></div>"
+             "</div>",
+             s_status_ssid, signal, rssi, ip_str);
+    }
+
+    // --- System card ---
+    {
+        char board_id[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];
+        pico_get_unique_board_id_string(board_id, sizeof(board_id));
+
+        extern char __StackLimit, __bss_end__;
+        uint32_t total_heap = &__StackLimit - &__bss_end__;
+        struct mallinfo mi = mallinfo();
+        uint32_t heap_free = total_heap - (uint32_t)mi.uordblks;
+
+        uint64_t uptime_ms = to_ms_since_boot(get_absolute_time());
+        uint32_t up_sec = (uint32_t)(uptime_ms / 1000);
+        char uptime_str[32];
+        if (up_sec >= 3600)
+            snprintf(uptime_str, sizeof(uptime_str), "%luh %lum %lus",
+                     (unsigned long)(up_sec / 3600),
+                     (unsigned long)((up_sec % 3600) / 60),
+                     (unsigned long)(up_sec % 60));
+        else if (up_sec >= 60)
+            snprintf(uptime_str, sizeof(uptime_str), "%lum %lus",
+                     (unsigned long)(up_sec / 60),
+                     (unsigned long)(up_sec % 60));
+        else
+            snprintf(uptime_str, sizeof(uptime_str), "%lus", (unsigned long)up_sec);
+
 #ifdef PICO_RP2350
-    const char* cpu = "RP2350 (Cortex-M33)";
+        const char* cpu = "RP2350 (Cortex-M33)";
 #else
-    const char* cpu = "RP2040 (Cortex-M0+)";
+        const char* cpu = "RP2040 (Cortex-M0+)";
 #endif
 
-    // PM sensor values (integer formatting to avoid float printf dependency)
-    const nextpm::Data& pm = nextpm::get_last();
-    char pm1_str[16], pm25_str[16], pm10_str[16], pmt_str[16], pmh_str[16];
-    const char* pm1_cls  = "";
-    const char* pm25_cls = "";
-    const char* pm10_cls = "";
-
-    if (pm.ok) {
-        int v;
-        v = (int)(pm.pm1 * 10); snprintf(pm1_str, sizeof(pm1_str), "%d.%d", v / 10, v % 10);
-        v = (int)(pm.pm25 * 10); snprintf(pm25_str, sizeof(pm25_str), "%d.%d", v / 10, v % 10);
-        v = (int)(pm.pm10 * 10); snprintf(pm10_str, sizeof(pm10_str), "%d.%d", v / 10, v % 10);
-        v = (int)(pm.temperature * 10); snprintf(pmt_str, sizeof(pmt_str), "%d.%d", v / 10, v % 10);
-        v = (int)(pm.humidity * 10); snprintf(pmh_str, sizeof(pmh_str), "%d.%d", v / 10, v % 10);
-        pm1_cls = "ok"; pm25_cls = "ok"; pm10_cls = "ok";
-    } else {
-        snprintf(pm1_str, sizeof(pm1_str), "&mdash;");
-        snprintf(pm25_str, sizeof(pm25_str), "&mdash;");
-        snprintf(pm10_str, sizeof(pm10_str), "&mdash;");
-        snprintf(pmt_str, sizeof(pmt_str), "&mdash;");
-        snprintf(pmh_str, sizeof(pmh_str), "&mdash;");
+        APPF("<div class=\"cd\"><h2>&#9881; Syst&egrave;me</h2>"
+             "<div class=\"r\"><span class=\"l\">Board</span><span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">ID</span>"
+             "<span class=\"v\" style=\"font-size:0.75em\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Firmware</span><span class=\"v\">v%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">CPU</span><span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Horloge</span><span class=\"v\">%u MHz</span></div>"
+             "<div class=\"r\"><span class=\"l\">Flash</span><span class=\"v\">%u KB</span></div>"
+             "<div class=\"r\"><span class=\"l\">Heap libre</span>"
+             "<span class=\"v ok\">%lu / %lu KB</span></div>"
+             "<div class=\"r\"><span class=\"l\">Uptime</span><span class=\"v\">%s</span></div>"
+             "</div>",
+             PICO_BOARD, board_id, FW_VERSION, cpu,
+             clock_get_hz(clk_sys) / 1000000,
+             PICO_FLASH_SIZE_BYTES / 1024,
+             (unsigned long)(heap_free / 1024),
+             (unsigned long)(total_heap / 1024),
+             uptime_str);
     }
 
-    int body_len = snprintf(s_body_tmp, sizeof(s_body_tmp), STATUS_PAGE_FMT,
-        s_status_ssid,
-        signal, rssi,
-        ip_str,
-        PICO_BOARD,
-        board_id,
-        FW_VERSION,
-        cpu,
-        clock_get_hz(clk_sys) / 1000000,
-        PICO_FLASH_SIZE_BYTES / 1024,
-        (unsigned long)(heap_free / 1024),
-        (unsigned long)(total_heap / 1024),
-        uptime_str,
-        pm1_cls, pm1_str,
-        pm25_cls, pm25_str,
-        pm10_cls, pm10_str,
-        pmt_str,
-        pmh_str);
+    // --- PM sensor card ---
+    {
+        const nextpm::Data& pm = nextpm::get_last();
+        char pm1_str[16], pm25_str[16], pm10_str[16], pmt_str[16], pmh_str[16];
+        const char* pm1_cls  = "";
+        const char* pm25_cls = "";
+        const char* pm10_cls = "";
 
-    if (body_len < 0) body_len = 0;
+        if (pm.ok) {
+            int v;
+            v = (int)(pm.pm1 * 10);         snprintf(pm1_str,  sizeof(pm1_str),  "%d.%d", v/10, v%10);
+            v = (int)(pm.pm25 * 10);        snprintf(pm25_str, sizeof(pm25_str), "%d.%d", v/10, v%10);
+            v = (int)(pm.pm10 * 10);        snprintf(pm10_str, sizeof(pm10_str), "%d.%d", v/10, v%10);
+            v = (int)(pm.temperature * 10); snprintf(pmt_str,  sizeof(pmt_str),  "%d.%d", v/10, v%10);
+            v = (int)(pm.humidity * 10);    snprintf(pmh_str,  sizeof(pmh_str),  "%d.%d", v/10, v%10);
+            pm1_cls = "ok"; pm25_cls = "ok"; pm10_cls = "ok";
+        } else {
+            snprintf(pm1_str,  sizeof(pm1_str),  "&mdash;");
+            snprintf(pm25_str, sizeof(pm25_str), "&mdash;");
+            snprintf(pm10_str, sizeof(pm10_str), "&mdash;");
+            snprintf(pmt_str,  sizeof(pmt_str),  "&mdash;");
+            snprintf(pmh_str,  sizeof(pmh_str),  "&mdash;");
+        }
+
+        APPF("<div class=\"cd\"><h2>&#127777; Capteur PM</h2>"
+             "<div class=\"r\"><span class=\"l\">PM1.0</span>"
+             "<span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+             "<div class=\"r\"><span class=\"l\">PM2.5</span>"
+             "<span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+             "<div class=\"r\"><span class=\"l\">PM10</span>"
+             "<span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
+             "<div class=\"r\"><span class=\"l\">Temp (int.)</span>"
+             "<span class=\"v\">%s &deg;C</span></div>"
+             "<div class=\"r\"><span class=\"l\">Humidit&eacute;</span>"
+             "<span class=\"v\">%s %%</span></div>"
+             "</div>",
+             pm1_cls, pm1_str, pm25_cls, pm25_str,
+             pm10_cls, pm10_str, pmt_str, pmh_str);
+    }
+
+    // --- Modem card ---
+    APP(DASH_MODEM_CARD);
+
+    // --- Logs card ---
+    APP(DASH_LOGS_CARD);
+
+    // --- Reboot ---
+    APP(DASH_REBOOT);
+
+    // --- Footer ---
+    if (is_ap_mode)
+        APP("<div class=\"ft\">MobileAir by AirCarto</div>");
+    else
+        APP("<div class=\"ft\">MobileAir by AirCarto &bull; mobileair.local</div>");
+
+    // --- Close grid ---
+    APP("</div>");
+
+    // --- JavaScript ---
+    APP(DASH_JS);
+
+    // --- Close page ---
+    APP("</div></body></html>");
+
+    #undef APP
+    #undef APPF
+
+    *p = '\0';
+    int body_len = (int)(p - s_body_tmp);
     if (body_len >= (int)sizeof(s_body_tmp)) body_len = sizeof(s_body_tmp) - 1;
 
     s_page_buf_len = compose_http_response(s_page_buf, sizeof(s_page_buf),
@@ -650,40 +727,41 @@ static void file_serve(struct fs_file* file, const char* buf, int len) {
 int fs_open_custom(struct fs_file* file, const char* name) {
     memset(file, 0, sizeof(struct fs_file));
 
-    // --- Status mode (STA connected) ---
+    // --- Shared API endpoints (both modes) ---
+
+    if (strcmp(name, "/rebooting") == 0) {
+        compose_reboot_page();
+        file_serve(file, s_result_buf, s_result_buf_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/modem-test") == 0) {
+        compose_modem_test_response();
+        file_serve(file, s_modem_json_buf, s_modem_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/sim-test") == 0) {
+        compose_sim_test_response();
+        file_serve(file, s_modem_json_buf, s_modem_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/led-test") == 0) {
+        compose_led_test_response();
+        file_serve(file, s_modem_json_buf, s_modem_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/logs") == 0) {
+        compose_logs_response();
+        file_serve(file, s_logs_buf, s_logs_buf_len);
+        return 1;
+    }
+
+    // --- Status mode (STA connected) — dashboard for any URL ---
     if (s_mode == MODE_STATUS) {
-        if (strcmp(name, "/rebooting") == 0) {
-            compose_reboot_page();
-            file_serve(file, s_result_buf, s_result_buf_len);
-            return 1;
-        }
-
-        if (strcmp(name, "/modem-test") == 0) {
-            compose_modem_test_response();
-            file_serve(file, s_modem_json_buf, s_modem_json_len);
-            return 1;
-        }
-
-        if (strcmp(name, "/sim-test") == 0) {
-            compose_sim_test_response();
-            file_serve(file, s_modem_json_buf, s_modem_json_len);
-            return 1;
-        }
-
-        if (strcmp(name, "/led-test") == 0) {
-            compose_led_test_response();
-            file_serve(file, s_modem_json_buf, s_modem_json_len);
-            return 1;
-        }
-
-        if (strcmp(name, "/logs") == 0) {
-            compose_logs_response();
-            file_serve(file, s_logs_buf, s_logs_buf_len);
-            return 1;
-        }
-
-        // Serve status/dashboard page for any URL
-        compose_status_page();
+        compose_dashboard(false);
         file_serve(file, s_page_buf, s_page_buf_len);
         return 1;
     }
@@ -693,8 +771,13 @@ int fs_open_custom(struct fs_file* file, const char* name) {
     if (strcmp(name, "/result") == 0 && s_has_connect_result) {
         compose_result_page();
         file_serve(file, s_result_buf, s_result_buf_len);
-
         file->flags = FS_FILE_FLAGS_HEADER_INCLUDED;
+        return 1;
+    }
+
+    if (strcmp(name, "/diag") == 0) {
+        compose_dashboard(true);
+        file_serve(file, s_page_buf, s_page_buf_len);
         return 1;
     }
 
@@ -703,7 +786,7 @@ int fs_open_custom(struct fs_file* file, const char* name) {
         return 1;
     }
 
-    // Default: serve index page
+    // Default: serve WiFi config page
     compose_index_page();
     file_serve(file, s_page_buf, s_page_buf_len);
     return 1;

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1] - 2026-03-15
+
+### Ajouté
+- Onglet "Diagnostic" en mode hotspot (AP) : accès aux infos système, capteur PM, modem, logs et redémarrage sans connexion WiFi
+- Navigation par onglets WiFi / Diagnostic sur la page du portail captif
+
+### Amélioré
+- Page dashboard unifiée entre mode AP et mode connecté (une seule fonction `compose_dashboard`)
+- Endpoints API (`/modem-test`, `/sim-test`, `/led-test`, `/logs`, `/rebooting`) accessibles dans les deux modes
+- Routing HTTP simplifié : endpoints partagés factorisés en amont du check de mode
+- Suppression de la duplication HTML/CSS/JS entre les templates AP et connecté (~200 lignes en moins)
+
 ## [0.4.0] - 2026-03-12
 
 ### Ajouté
