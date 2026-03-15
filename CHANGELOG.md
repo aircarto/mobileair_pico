@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.2] - 2026-03-15
+
+### Ajouté
+- Mode Mobile (10s) / Stationnaire (60s) pour l'intervalle de lecture capteur et envoi modem
+- Carte "Mode" sur le dashboard avec boutons de bascule (accessible en AP et connecté)
+- Module `device_mode` : API get/set/interval_ms/label, prêt pour pilotage GPS ou modem descendant
+- Endpoints `/set-mode-mobile` et `/set-mode-stationary`
+
+### Amélioré
+- Intervalle capteur dynamique (remplace le 30s codé en dur)
+
 ## [0.4.1] - 2026-03-15
 
 ### Ajouté
