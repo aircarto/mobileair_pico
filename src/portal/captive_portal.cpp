@@ -4,6 +4,7 @@
 #include "../wifi/wifi_manager.h"
 #include "../modem/modem.h"
 #include "../sensors/nextpm.h"
+#include "../device_mode.h"
 #include "../logger.h"
 
 #include "pico/stdlib.h"
@@ -190,6 +191,10 @@ static const char DASH_HEAD[] =
     "button:disabled{background:#555;cursor:not-allowed}"
     ".btn-reboot{background:#ff6b6b;color:#fff;margin-top:16px}"
     ".btn-reboot:hover{background:#ff5252}"
+    ".mode-btns{display:flex;gap:8px;margin-top:12px}"
+    ".mode-btns button{flex:1;margin-top:0}"
+    ".btn-outline{background:transparent;border:2px solid #00d4ff;color:#00d4ff}"
+    ".btn-outline:hover{background:rgba(0,212,255,0.15)}"
     ".ft{text-align:center;color:#555;font-size:0.75em;margin-top:24px;grid-column:1/-1}"
     ".act{grid-column:1/-1}"
     ".ref{background:none;border:none;color:#00d4ff;font-size:1.4em;cursor:pointer;"
@@ -270,6 +275,10 @@ static const char DASH_JS[] =
     "}).catch(function(){"
     "box.textContent='Erreur de chargement';"
     "});}"
+    "function setMode(m){"
+    "fetch('/set-mode-'+m).then(function(x){return x.json()}).then(function(d){"
+    "if(d.ok)location.reload();"
+    "}).catch(function(){alert('Erreur r\\u00e9seau');});}"
     "</script>";
 
 // Reboot in-progress page
@@ -406,6 +415,26 @@ static void compose_dashboard(bool is_ap_mode) {
 
     // --- Open grid ---
     APP("<div class=\"grid\">");
+
+    // --- Mode card ---
+    {
+        bool is_mobile = (device_mode::get() == DeviceMode::MOBILE);
+        APPF("<div class=\"cd\"><h2>&#128205; Mode</h2>"
+             "<div class=\"r\"><span class=\"l\">Mode</span>"
+             "<span class=\"v ok\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Intervalle</span>"
+             "<span class=\"v\">%s</span></div>"
+             "<div class=\"mode-btns\">"
+             "<button type=\"button\" onclick=\"setMode('mobile')\" %s>"
+             "Mobile (10s)</button>"
+             "<button type=\"button\" onclick=\"setMode('stationary')\" %s>"
+             "Stationnaire (1min)</button>"
+             "</div></div>",
+             device_mode::label(),
+             is_mobile ? "10 sec" : "60 sec",
+             is_mobile ? "" : "class=\"btn-outline\"",
+             is_mobile ? "class=\"btn-outline\"" : "");
+    }
 
     // --- WiFi card (connected mode only) ---
     if (!is_ap_mode) {
@@ -552,6 +581,18 @@ static void compose_dashboard(bool is_ap_mode) {
 
     s_page_buf_len = compose_http_response(s_page_buf, sizeof(s_page_buf),
                                             s_body_tmp, body_len);
+}
+
+static void compose_set_mode_response(DeviceMode mode) {
+    device_mode::set(mode);
+    const char* json = "{\"ok\":true}";
+    int json_len = strlen(json);
+    s_modem_json_len = snprintf(s_modem_json_buf, sizeof(s_modem_json_buf),
+        "HTTP/1.0 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "\r\n%s", json_len, json);
 }
 
 static void compose_reboot_page() {
@@ -756,6 +797,18 @@ int fs_open_custom(struct fs_file* file, const char* name) {
     if (strcmp(name, "/logs") == 0) {
         compose_logs_response();
         file_serve(file, s_logs_buf, s_logs_buf_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/set-mode-mobile") == 0) {
+        compose_set_mode_response(DeviceMode::MOBILE);
+        file_serve(file, s_modem_json_buf, s_modem_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/set-mode-stationary") == 0) {
+        compose_set_mode_response(DeviceMode::STATIONARY);
+        file_serve(file, s_modem_json_buf, s_modem_json_len);
         return 1;
     }
 

@@ -43,6 +43,7 @@ add_executable(mobileair_pico
     src/portal/dhcp_server.c
     src/modem/modem.cpp
     src/sensors/nextpm.cpp
+    src/device_mode.cpp
     src/logger.cpp
 )
 

@@ -9,6 +9,7 @@
 #include "portal/captive_portal.h"
 #include "modem/modem.h"
 #include "sensors/nextpm.h"
+#include "device_mode.h"
 #include "logger.h"
 #include "lwip/apps/mdns.h"
 #include <cstdio>
@@ -343,7 +344,7 @@ int main() {
                         watchdog_reboot(0, 0, 100);
                     }
 
-                    // Read NextPM every 30 seconds
+                    // Read sensors at mode-dependent interval
                     uint32_t now = to_ms_since_boot(get_absolute_time());
                     if (now >= next_sensor_read) {
                         nextpm::Data pm = nextpm::read();
@@ -355,7 +356,7 @@ int main() {
                         } else {
                             printf("[nextpm] Read failed\n");
                         }
-                        next_sensor_read = now + 30000;
+                        next_sensor_read = now + device_mode::interval_ms();
                     }
 
                     wifi_manager::poll();
