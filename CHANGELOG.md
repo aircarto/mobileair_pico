@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.3] - 2026-03-16
+
+### Ajouté
+- Sélection dynamique des registres Modbus selon le mode : moyenne 10s (mobile) / 1min (stationnaire)
+- Parsing complet du registre Status NextPM (bits 0-8 : sleep, degraded, not_ready, erreurs mineures, default_state)
+- Affichage du status NextPM sur le dashboard (OK / Démarrage / Veille / erreurs mineures / panne ventilateur)
+- Documentation `docs/nextpm_modbus.md` : protocole Modbus, registres lisibles, codes d'erreur status
+- Bouton déconnexion WiFi et badges de mode
+- Modale de confirmation avant connexion WiFi
+- Champ mot de passe inline avec toggle afficher/masquer
+
+### Corrigé
+- Boucle de reboot : arrêt CPU après watchdog_reboot
+- Troncature JS du dashboard : augmentation des buffers de page
+
 ## [0.4.2] - 2026-03-15
 
 ### Ajouté

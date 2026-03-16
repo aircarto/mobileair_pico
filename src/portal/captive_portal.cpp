@@ -250,6 +250,8 @@ static const char DASH_HEAD[] =
     ".r:last-child{border-bottom:none}"
     ".l{color:#888}.v{color:#e0e0e0;font-weight:500}"
     ".ok{color:#00ff88}"
+    ".npm-warn{color:#ffaa00}"
+    ".npm-err{color:#ff6b6b}"
     "button{width:100%;padding:14px;border-radius:8px;border:none;"
     "background:#00d4ff;color:#1a1a2e;font-size:1em;font-weight:700;"
     "cursor:pointer;margin-top:8px;transition:background 0.2s}"
@@ -618,7 +620,41 @@ static void compose_dashboard(bool is_ap_mode) {
             snprintf(pmh_str,  sizeof(pmh_str),  "&mdash;");
         }
 
+        // Build NextPM status string
+        const char* npm_status_str;
+        const char* npm_status_cls;
+        char npm_err_str[64];
+        if (!pm.ok) {
+            npm_status_str = "Pas de donn&eacute;es";
+            npm_status_cls = "";
+        } else if (pm.status.not_ready) {
+            npm_status_str = "D&eacute;marrage...";
+            npm_status_cls = "";
+        } else if (pm.status.sleep) {
+            npm_status_str = "Veille";
+            npm_status_cls = "";
+        } else if (pm.status.default_state) {
+            npm_status_str = "Arr&ecirc;t (ventilateur HS)";
+            npm_status_cls = "npm-err";
+        } else if (pm.status.has_error()) {
+            // Build comma-separated error list
+            char* ep = npm_err_str;
+            char* end = npm_err_str + sizeof(npm_err_str);
+            if (pm.status.fan_error)    ep += snprintf(ep, end - ep, "Ventil.");
+            if (pm.status.laser_error)  ep += snprintf(ep, end - ep, "%sLaser",   ep > npm_err_str ? ", " : "");
+            if (pm.status.heat_error)   ep += snprintf(ep, end - ep, "%sChauffe", ep > npm_err_str ? ", " : "");
+            if (pm.status.trh_error)    ep += snprintf(ep, end - ep, "%sT/RH",    ep > npm_err_str ? ", " : "");
+            if (pm.status.memory_error) ep += snprintf(ep, end - ep, "%sM&eacute;m.", ep > npm_err_str ? ", " : "");
+            npm_status_str = npm_err_str;
+            npm_status_cls = "npm-warn";
+        } else {
+            npm_status_str = "OK";
+            npm_status_cls = "ok";
+        }
+
         APPF("<div class=\"cd\"><h2>&#127777; Capteur PM</h2>"
+             "<div class=\"r\"><span class=\"l\">Status</span>"
+             "<span class=\"v %s\">%s</span></div>"
              "<div class=\"r\"><span class=\"l\">PM1.0</span>"
              "<span class=\"v %s\">%s &micro;g/m&sup3;</span></div>"
              "<div class=\"r\"><span class=\"l\">PM2.5</span>"
@@ -630,6 +666,7 @@ static void compose_dashboard(bool is_ap_mode) {
              "<div class=\"r\"><span class=\"l\">Humidit&eacute;</span>"
              "<span class=\"v\">%s %%</span></div>"
              "</div>",
+             npm_status_cls, npm_status_str,
              pm1_cls, pm1_str, pm25_cls, pm25_str,
              pm10_cls, pm10_str, pmt_str, pmh_str);
     }

@@ -1,4 +1,5 @@
 #include "sensors/nextpm.h"
+#include "device_mode.h"
 #include "hardware/uart.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
@@ -13,12 +14,20 @@
 #define NEXTPM_ADDR     1   // Modbus slave address
 
 // NextPM Modbus holding registers
-#define REG_STATUS      0x13
-#define REG_PM1_1MIN    0x44
-#define REG_PM25_1MIN   0x46
-#define REG_PM10_1MIN   0x48
-#define REG_HUM_INT     0x6A
-#define REG_TEMP_INT    0x6B
+#define REG_STATUS       0x13
+
+// PM registers - 10 sec average (ug/m3)
+#define REG_PM1_10S      0x38
+#define REG_PM25_10S     0x3A
+#define REG_PM10_10S     0x3C
+
+// PM registers - 1 min average (ug/m3)
+#define REG_PM1_1MIN     0x44
+#define REG_PM25_1MIN    0x46
+#define REG_PM10_1MIN    0x48
+
+#define REG_HUM_INT      0x6A
+#define REG_TEMP_INT     0x6B
 
 // Modbus function codes
 #define FUNC_READ_HOLDING 0x03
@@ -157,31 +166,71 @@ bool init() {
     return true;
 }
 
+static Status parse_status(uint16_t raw) {
+    Status s = {};
+    s.raw           = raw;
+    s.sleep         = raw & (1 << 0);
+    s.degraded      = raw & (1 << 1);
+    s.not_ready     = raw & (1 << 2);
+    s.heat_error    = raw & (1 << 3);
+    s.trh_error     = raw & (1 << 4);
+    s.fan_error     = raw & (1 << 5);
+    s.memory_error  = raw & (1 << 6);
+    s.laser_error   = raw & (1 << 7);
+    s.default_state = raw & (1 << 8);
+    return s;
+}
+
 Data read() {
     Data d = {};
 
     // Status register (1 x 16-bit)
     uint16_t status_reg;
     if (read_holding_registers(REG_STATUS, 1, &status_reg)) {
-        d.status = status_reg;
+        d.status = parse_status(status_reg);
+        if (d.status.has_error()) {
+            printf("[nextpm] Status 0x%04X:", status_reg);
+            if (d.status.sleep)         printf(" SLEEP");
+            if (d.status.degraded)      printf(" DEGRADED");
+            if (d.status.not_ready)     printf(" NOT_READY");
+            if (d.status.heat_error)    printf(" HEAT_ERR");
+            if (d.status.trh_error)     printf(" TRH_ERR");
+            if (d.status.fan_error)     printf(" FAN_ERR");
+            if (d.status.memory_error)  printf(" MEM_ERR");
+            if (d.status.laser_error)   printf(" LASER_ERR");
+            if (d.status.default_state) printf(" DEFAULT");
+            printf("\n");
+        }
+    }
+
+    // Select registers based on device mode
+    uint16_t reg_pm1, reg_pm25, reg_pm10;
+    if (device_mode::get() == DeviceMode::MOBILE) {
+        reg_pm1  = REG_PM1_10S;
+        reg_pm25 = REG_PM25_10S;
+        reg_pm10 = REG_PM10_10S;
+    } else {
+        reg_pm1  = REG_PM1_1MIN;
+        reg_pm25 = REG_PM25_1MIN;
+        reg_pm10 = REG_PM10_1MIN;
     }
 
     // PM values (2 x 16-bit each = 32-bit)
     uint16_t pm_regs[2];
 
-    if (read_holding_registers(REG_PM1_1MIN, 2, pm_regs)) {
+    if (read_holding_registers(reg_pm1, 2, pm_regs)) {
         uint32_t raw = ((uint32_t)pm_regs[1] << 16) | pm_regs[0];
         d.pm1 = raw / 1000.0f;
         d.ok = true;
     }
 
-    if (read_holding_registers(REG_PM25_1MIN, 2, pm_regs)) {
+    if (read_holding_registers(reg_pm25, 2, pm_regs)) {
         uint32_t raw = ((uint32_t)pm_regs[1] << 16) | pm_regs[0];
         d.pm25 = raw / 1000.0f;
         d.ok = true;
     }
 
-    if (read_holding_registers(REG_PM10_1MIN, 2, pm_regs)) {
+    if (read_holding_registers(reg_pm10, 2, pm_regs)) {
         uint32_t raw = ((uint32_t)pm_regs[1] << 16) | pm_regs[0];
         d.pm10 = raw / 1000.0f;
         d.ok = true;
