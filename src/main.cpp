@@ -342,10 +342,12 @@ int main() {
                             wifi_credentials::erase();
                         }
                         printf("[main] Rebooting via web UI...\n");
+                        // Flush the reboot page to the client
                         for (int i = 0; i < 10; i++) {
                             wifi_manager::poll();
                         }
                         watchdog_reboot(0, 0, 100);
+                        while (true) tight_loop_contents();
                     }
 
                     // Read sensors at mode-dependent interval
