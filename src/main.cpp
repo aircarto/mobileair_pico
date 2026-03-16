@@ -356,9 +356,11 @@ int main() {
                         nextpm::Data pm = nextpm::read();
                         if (pm.ok) {
                             printf("[nextpm] PM1=%.1f PM2.5=%.1f PM10=%.1f ug/m3"
-                                   "  T=%.1fC H=%.1f%%\n",
+                                   "  T=%.1fC H=%.1f%% S=0x%04X%s\n",
                                    pm.pm1, pm.pm25, pm.pm10,
-                                   pm.temperature, pm.humidity);
+                                   pm.temperature, pm.humidity,
+                                   pm.status.raw,
+                                   pm.status.is_ready() ? "" : " (!ready)");
                         } else {
                             printf("[nextpm] Read failed\n");
                         }
