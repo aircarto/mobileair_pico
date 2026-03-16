@@ -91,6 +91,18 @@ button:disabled{background:#555;cursor:not-allowed}
 .badge{display:inline-block;padding:6px 14px;border-radius:20px;font-size:0.85em;font-weight:600}
 .badge-ap{background:rgba(255,170,0,0.15);color:#ffaa00;border:1px solid rgba(255,170,0,0.3)}
 .footer{text-align:center;color:#555;font-size:0.75em;margin-top:24px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+.modal{background:#16213e;border-radius:16px;padding:28px 24px;max-width:380px;width:100%;border:1px solid #0f3460;text-align:center}
+.modal h2{color:#ffaa00;font-size:1.15em;margin-bottom:14px}
+.modal p{color:#ccc;font-size:0.9em;line-height:1.5;margin-bottom:10px}
+.modal .warn{color:#ff6b6b;font-weight:600;font-size:0.95em}
+.modal .spinner{display:inline-block;width:28px;height:28px;border:3px solid #0f3460;border-top-color:#00d4ff;border-radius:50%;animation:spin 0.8s linear infinite;margin:16px 0 8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.modal-btns{display:flex;gap:10px;margin-top:18px}
+.modal-btns button{flex:1;margin-top:0;font-size:0.9em;padding:12px}
+.btn-cancel{background:transparent;border:2px solid #888;color:#888}
+.btn-cancel:hover{border-color:#ccc;color:#ccc;background:transparent}
 </style></head><body><div class="container">
 <h1>MobileAir</h1>
 <p class="subtitle"><span class="badge badge-ap">&#128246; Point d'acc&egrave;s</span></p>
@@ -118,6 +130,25 @@ static const char PAGE_FORM_POST[] = R"html(
 </div>
 <button type="submit" id="btn" disabled>Connexion</button>
 </form>
+<div class="overlay" id="modal">
+<div class="modal">
+<h2>&#9888; Connexion en cours</h2>
+<p>Le capteur va tenter de se connecter au r&eacute;seau WiFi
+<strong id="modal-ssid"></strong>.</p>
+<p>Si la connexion r&eacute;ussit, le r&eacute;seau
+<strong>MobileAir</strong> va dispara&icirc;tre et le capteur
+sera accessible sur le nouveau r&eacute;seau.</p>
+<p>Si la connexion &eacute;choue, le capteur reviendra en mode
+point d'acc&egrave;s et vous pourrez r&eacute;essayer.</p>
+<p class="warn">&#x26A0; Attention : vous allez &ecirc;tre
+d&eacute;connect&eacute; du r&eacute;seau MobileAir.</p>
+<div class="spinner"></div>
+<div class="modal-btns" id="modal-btns">
+<button type="button" class="btn-cancel" id="modal-cancel">Annuler</button>
+<button type="button" id="modal-ok">Confirmer</button>
+</div>
+</div>
+</div>
 <script>
 document.getElementById('eye').onclick=function(){
  var p=document.getElementById('pass'),e=this;
@@ -137,9 +168,20 @@ document.querySelectorAll('.network').forEach(function(n){
   document.getElementById('btn').disabled=false;
  };
 });
-document.getElementById('wf').onsubmit=function(){
+document.getElementById('wf').onsubmit=function(ev){
+ ev.preventDefault();
+ document.getElementById('modal-ssid').textContent=
+  document.getElementById('ssid_field').value;
+ document.getElementById('modal').classList.add('show');
+};
+document.getElementById('modal-cancel').onclick=function(){
+ document.getElementById('modal').classList.remove('show');
+};
+document.getElementById('modal-ok').onclick=function(){
+ document.getElementById('modal-btns').style.display='none';
  document.getElementById('btn').disabled=true;
  document.getElementById('btn').textContent='Connexion en cours...';
+ document.getElementById('wf').submit();
 };
 </script>
 )html";
