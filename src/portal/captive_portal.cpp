@@ -72,6 +72,14 @@ input:focus{outline:none;border-color:#00d4ff}
 button{width:100%;padding:14px;border-radius:8px;border:none;background:#00d4ff;color:#1a1a2e;font-size:1em;font-weight:700;cursor:pointer;margin-top:16px;transition:background 0.2s}
 button:hover{background:#00b8d9}
 button:disabled{background:#555;cursor:not-allowed}
+.pass-box{display:none;margin-top:8px;padding:12px;background:#1a1a2e;border-radius:8px;border:1px solid #0f3460}
+.pass-box.show{display:block}
+.pass-box label{font-size:0.85em;color:#888}
+.pass-wrap{position:relative}
+.pass-wrap input{padding-right:44px}
+.pass-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#888;font-size:1.1em;cursor:pointer;padding:4px 8px;margin:0;width:auto;min-width:0}
+.pass-toggle:hover{color:#00d4ff}
+.sel-name{color:#00d4ff;font-weight:600;margin-bottom:4px}
 .msg-ok{color:#00ff88;text-align:center;padding:16px}
 .msg-err{color:#ff6b6b;text-align:center;padding:16px}
 .scanning{text-align:center;color:#888;padding:20px}
@@ -98,30 +106,43 @@ static const char PAGE_FORM_PRE[] = R"(
 <input type="hidden" name="ssid" id="ssid_field" value="">
 )";
 
-static const char PAGE_FORM_POST[] = R"(
-</div>
-<div class="card">
+static const char PAGE_FORM_POST[] = R"html(
+<div class="pass-box" id="passbox">
+<div class="sel-name" id="selname"></div>
 <label>Mot de passe WiFi</label>
+<div class="pass-wrap">
 <input type="password" name="password" id="pass" placeholder="Entrez le mot de passe">
+<button type="button" class="pass-toggle" id="eye">&#128065;</button>
+</div>
+</div>
 </div>
 <button type="submit" id="btn" disabled>Connexion</button>
 </form>
 <script>
-document.querySelectorAll('.network').forEach(n=>{
- n.onclick=()=>{
-  document.querySelectorAll('.network').forEach(x=>x.classList.remove('selected'));
+document.getElementById('eye').onclick=function(){
+ var p=document.getElementById('pass'),e=this;
+ if(p.type==='password'){p.type='text';e.innerHTML='&#128064;';}
+ else{p.type='password';e.innerHTML='&#128065;';}
+};
+document.querySelectorAll('.network').forEach(function(n){
+ n.onclick=function(){
+  document.querySelectorAll('.network').forEach(function(x){x.classList.remove('selected')});
   n.classList.add('selected');
-  document.getElementById('ssid_field').value=n.dataset.ssid;
+  var ssid=n.dataset.ssid,auth=parseInt(n.dataset.auth);
+  document.getElementById('ssid_field').value=ssid;
+  document.getElementById('selname').textContent=ssid;
+  var pb=document.getElementById('passbox');
+  if(auth){pb.classList.add('show');document.getElementById('pass').focus();}
+  else{pb.classList.remove('show');document.getElementById('pass').value='';}
   document.getElementById('btn').disabled=false;
-  if(!parseInt(n.dataset.auth))document.getElementById('pass').value='';
- }
+ };
 });
-document.getElementById('wf').onsubmit=()=>{
+document.getElementById('wf').onsubmit=function(){
  document.getElementById('btn').disabled=true;
  document.getElementById('btn').textContent='Connexion en cours...';
 };
 </script>
-)";
+)html";
 
 static const char PAGE_RESULT_OK[] = R"(
 <div class="card">
