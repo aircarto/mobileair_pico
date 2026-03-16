@@ -24,4 +24,7 @@ namespace captive_portal {
 
     // Check if a reboot was requested via the web UI
     bool should_reboot();
+
+    // Check if WiFi credentials should be erased before reboot
+    bool should_forget_wifi();
 }

@@ -337,6 +337,10 @@ int main() {
                     }
 
                     if (captive_portal::should_reboot()) {
+                        if (captive_portal::should_forget_wifi()) {
+                            printf("[main] Erasing WiFi credentials...\n");
+                            wifi_credentials::erase();
+                        }
                         printf("[main] Rebooting via web UI...\n");
                         for (int i = 0; i < 10; i++) {
                             wifi_manager::poll();

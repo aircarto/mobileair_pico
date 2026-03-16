@@ -38,6 +38,7 @@ static char s_connect_msg[128] = {};
 static bool s_connect_success = false;
 static bool s_has_connect_result = false;
 static bool s_reboot_requested = false;
+static bool s_wifi_forget_requested = false;
 static char s_status_ssid[33] = {};
 
 // --- Networks HTML fragment (filled by set_networks_html) ---
@@ -79,10 +80,12 @@ button:disabled{background:#555;cursor:not-allowed}
 .tab:first-child{border-radius:8px 0 0 8px}.tab:last-child{border-radius:0 8px 8px 0}
 .tab.active{color:#00d4ff;background:#16213e;border-color:#00d4ff;font-weight:700}
 .tab:hover{color:#00d4ff}
+.badge{display:inline-block;padding:6px 14px;border-radius:20px;font-size:0.85em;font-weight:600}
+.badge-ap{background:rgba(255,170,0,0.15);color:#ffaa00;border:1px solid rgba(255,170,0,0.3)}
 .footer{text-align:center;color:#555;font-size:0.75em;margin-top:24px}
 </style></head><body><div class="container">
 <h1>MobileAir</h1>
-<p class="subtitle">Configuration WiFi</p>
+<p class="subtitle"><span class="badge badge-ap">&#128246; Point d'acc&egrave;s</span></p>
 )";
 
 static const char PAGE_FOOTER[] = R"(
@@ -200,6 +203,11 @@ static const char DASH_HEAD[] =
     ".ref{background:none;border:none;color:#00d4ff;font-size:1.4em;cursor:pointer;"
     "padding:4px 8px;margin:0;width:auto;transition:transform 0.3s}"
     ".ref:hover{transform:rotate(180deg)}"
+    ".badge{display:inline-block;padding:6px 14px;border-radius:20px;font-size:0.85em;font-weight:600}"
+    ".badge-ap{background:rgba(255,170,0,0.15);color:#ffaa00;border:1px solid rgba(255,170,0,0.3)}"
+    ".badge-sta{background:rgba(0,255,136,0.15);color:#00ff88;border:1px solid rgba(0,255,136,0.3)}"
+    ".btn-forget{background:#ff6b6b;color:#fff;margin-top:8px}"
+    ".btn-forget:hover{background:#ff5252}"
     "</style></head><body><div class=\"c\">";
 
 static const char DASH_MODEM_CARD[] =
@@ -402,11 +410,22 @@ static void compose_dashboard(bool is_ap_mode) {
     APP(DASH_HEAD);
 
     // --- Header ---
-    APPF("<div class=\"hdr\"><h1>MobileAir "
-         "<button class=\"ref\" onclick=\"location.reload()\" "
-         "title=\"Rafra\\u00eechir\">&#x1F504;</button>"
-         "</h1><p class=\"sub\">%s</p></div>",
-         is_ap_mode ? "Diagnostic" : "Tableau de bord");
+    if (is_ap_mode) {
+        APP("<div class=\"hdr\"><h1>MobileAir "
+            "<button class=\"ref\" onclick=\"location.reload()\" "
+            "title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+            "</h1><p class=\"sub\">"
+            "<span class=\"badge badge-ap\">&#128246; Point d'acc&egrave;s</span>"
+            "</p></div>");
+    } else {
+        APPF("<div class=\"hdr\"><h1>MobileAir "
+             "<button class=\"ref\" onclick=\"location.reload()\" "
+             "title=\"Rafra\\u00eechir\">&#x1F504;</button>"
+             "</h1><p class=\"sub\">"
+             "<span class=\"badge badge-sta\">&#9679; Connect&eacute; &agrave; %s</span>"
+             "</p></div>",
+             s_status_ssid);
+    }
 
     // --- Tabs (AP mode only) ---
     if (is_ap_mode) {
@@ -453,7 +472,11 @@ static void compose_dashboard(bool is_ap_mode) {
              "<div class=\"r\"><span class=\"l\">SSID</span><span class=\"v\">%s</span></div>"
              "<div class=\"r\"><span class=\"l\">Signal</span><span class=\"v\">%s %d dBm</span></div>"
              "<div class=\"r\"><span class=\"l\">IP</span><span class=\"v ok\">%s</span></div>"
-             "</div>",
+             "<form method=\"POST\" action=\"/wifi-forget\" style=\"margin:0\">"
+             "<button type=\"submit\" class=\"btn-forget\" "
+             "onclick=\"return confirm('Oublier le r\\u00e9seau WiFi et red\\u00e9marrer en mode point d\\u2019acc\\u00e8s ?')\">"
+             "&#x274C; Se d&eacute;connecter du WiFi</button>"
+             "</form></div>",
              s_status_ssid, signal, rssi, ip_str);
     }
 
@@ -583,6 +606,10 @@ static void compose_dashboard(bool is_ap_mode) {
                                             s_body_tmp, body_len);
 }
 
+// --- Modem test JSON response ---
+static char s_modem_json_buf[512];
+static int s_modem_json_len = 0;
+
 static void compose_set_mode_response(DeviceMode mode) {
     device_mode::set(mode);
     const char* json = "{\"ok\":true}";
@@ -623,10 +650,6 @@ static void compose_logs_response() {
         s_logs_buf_len += body_len;
     }
 }
-
-// --- Modem test JSON response ---
-static char s_modem_json_buf[512];
-static int s_modem_json_len = 0;
 
 static void compose_modem_test_response() {
     char at_resp[256] = {};
@@ -871,7 +894,8 @@ err_t httpd_post_begin(void* connection, const char* uri,
                        const char* http_request, u16_t http_request_len,
                        int content_len, char* response_uri,
                        u16_t response_uri_len, u8_t* post_auto_wnd) {
-    if (strcmp(uri, "/connect") == 0 || strcmp(uri, "/reboot") == 0) {
+    if (strcmp(uri, "/connect") == 0 || strcmp(uri, "/reboot") == 0
+        || strcmp(uri, "/wifi-forget") == 0) {
         strncpy(s_post_uri, uri, sizeof(s_post_uri) - 1);
         s_post_buf_len = 0;
         s_post_content_len = content_len;
@@ -944,6 +968,14 @@ static bool extract_field(const char* data, const char* field, char* out, int ou
 void httpd_post_finished(void* connection, char* response_uri, u16_t response_uri_len) {
     if (strcmp(s_post_uri, "/reboot") == 0) {
         printf("[portal] Reboot requested via web UI\n");
+        s_reboot_requested = true;
+        snprintf(response_uri, response_uri_len, "/rebooting");
+        return;
+    }
+
+    if (strcmp(s_post_uri, "/wifi-forget") == 0) {
+        printf("[portal] WiFi forget requested via web UI\n");
+        s_wifi_forget_requested = true;
         s_reboot_requested = true;
         snprintf(response_uri, response_uri_len, "/rebooting");
         return;
@@ -1057,6 +1089,10 @@ void set_connect_result(bool success, const char* message) {
 
 bool should_reboot() {
     return s_reboot_requested;
+}
+
+bool should_forget_wifi() {
+    return s_wifi_forget_requested;
 }
 
 } // namespace captive_portal
