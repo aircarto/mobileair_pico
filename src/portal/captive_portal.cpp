@@ -309,7 +309,7 @@ static const char REBOOT_PAGE_BODY[] =
 // =====================================================================
 
 // Large buffer for composing pages
-static char s_page_buf[9216];
+static char s_page_buf[12288];
 static int s_page_buf_len = 0;
 
 // Build HTTP response with headers included
@@ -328,7 +328,7 @@ static int compose_http_response(char* buf, int buf_size, const char* body, int 
 }
 
 // Temporary buffer for HTML body before adding headers
-static char s_body_tmp[8000];
+static char s_body_tmp[11000];
 
 static void compose_index_page() {
     char* p = s_body_tmp;
