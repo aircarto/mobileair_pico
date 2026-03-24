@@ -44,6 +44,8 @@ add_executable(mobileair_pico
     src/modem/modem.cpp
     src/sensors/nextpm.cpp
     src/sensors/ds3231.cpp
+    src/storage/sdcard.cpp
+    src/storage/datalog.cpp
     src/device_mode.cpp
     src/logger.cpp
 )
@@ -63,6 +65,7 @@ target_link_libraries(mobileair_pico
     hardware_sync
     hardware_uart
     hardware_i2c
+    hardware_spi
     pico_cyw43_arch_lwip_poll
     pico_lwip_http
     pico_lwip_mdns

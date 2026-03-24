@@ -55,9 +55,9 @@
 | 🟡 | GPS (NMEA) | PIO UART | GP2 TX, GP3 RX | 9600, 8N1 | Prevu |
 | 🟠 | Sonde gaz 1 (UART) | PIO UART | GP6 TX, GP7 RX | A definir | Prevu |
 | 🟤 | Sonde gaz 2 (UART) | PIO UART | GP8 TX, GP9 RX | A definir | Prevu |
-| 🟣 | Carte SD | SPI0 | GP16-GP19 | SPI 10-25 MHz | Prevu |
+| 🟣 | Carte SD | SPI0 | GP16-GP19 | SPI 10 MHz | Implemente |
 | 🔴 | BME280 (temp/hum/pression) | I2C0 | GP20 SDA, GP21 SCL | 100-400 kHz, addr 0x76/0x77 | Prevu |
-| 🔴 | RTC DS3231 | I2C0 | GP20 SDA, GP21 SCL | 100 kHz, addr 0x68 | Prevu |
+| 🔴 | RTC DS3231 | I2C0 | GP20 SDA, GP21 SCL | 100 kHz, addr 0x68 | Implemente |
 | 💡 | LED RGB (WS2812) | PIO data | GP22 | 800 kHz, 1 wire | Prevu |
 
 ## Ressources restantes

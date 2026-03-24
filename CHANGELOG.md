@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.4] - 2026-03-24
+
+### Ajouté
+- Support carte SD via SPI0 (GP16 MISO, GP17 CS, GP18 SCK, GP19 MOSI)
+  - Driver SPI complet : init 400 kHz, run 10 MHz, support SDv1/SDv2/SDHC
+  - Détection automatique du type de carte et lecture capacité (CSD)
+  - Lecture/écriture de blocs 512 octets
+- Module datalog : enregistrement CSV sur carte SD
+  - Header CSV : `datetime,pm1,pm25,pm10,temp_pm,hum_pm,status`
+  - Écriture séquentielle par secteurs avec buffer 512 octets en RAM
+  - Reprise après reboot (header persistant en secteur 0)
+- Carte "Carte SD" sur le dashboard : status, type, capacité, lignes CSV, taille données
+- Bouton "Télécharger CSV" : streaming direct depuis la carte SD via endpoint `/sd-csv`
+- Lecture RTC à chaque itération de la boucle principale
+
+### Amélioré
+- Log série combiné date/heure + mesures PM sur une seule ligne (`[data] 2026/03/24 14:30:00  PM1=...`)
+- Buffers dashboard augmentés (body 13 KB, page 14 KB) pour la nouvelle carte SD
+
 ## [0.4.3] - 2026-03-16
 
 ### Ajouté

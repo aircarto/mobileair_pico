@@ -10,6 +10,8 @@
 #include "modem/modem.h"
 #include "sensors/nextpm.h"
 #include "sensors/ds3231.h"
+#include "storage/sdcard.h"
+#include "storage/datalog.h"
 #include "device_mode.h"
 #include "logger.h"
 #include "lwip/apps/mdns.h"
@@ -201,6 +203,11 @@ int main() {
     ds3231::init();
     printf("\n");
 
+    // --- SD card ---
+    sdcard::init();
+    datalog::init();
+    printf("\n");
+
     // Press 'r' within 3s to erase WiFi credentials and force portal
     printf(ANSI_BYELLOW "    Press 'r' within 3s to reset WiFi credentials...\n" ANSI_RESET);
     {
@@ -359,16 +366,38 @@ int main() {
                     uint32_t now = to_ms_since_boot(get_absolute_time());
                     if (now >= next_sensor_read) {
                         nextpm::Data pm = nextpm::read();
+                        ds3231::Data rtc = ds3231::read();
+
+                        // Build datetime string
+                        char dt_str[24] = "----/--/-- --:--:--";
+                        if (rtc.ok) {
+                            snprintf(dt_str, sizeof(dt_str),
+                                     "20%02u/%02u/%02u %02u:%02u:%02u",
+                                     rtc.dt.year, rtc.dt.month, rtc.dt.date,
+                                     rtc.dt.hours, rtc.dt.minutes, rtc.dt.seconds);
+                        }
+
                         if (pm.ok) {
-                            printf("[nextpm] PM1=%.1f PM2.5=%.1f PM10=%.1f ug/m3"
+                            printf("[data] %s  PM1=%.1f PM2.5=%.1f PM10=%.1f ug/m3"
                                    "  T=%.1fC H=%.1f%% S=0x%04X%s\n",
+                                   dt_str,
                                    pm.pm1, pm.pm25, pm.pm10,
                                    pm.temperature, pm.humidity,
                                    pm.status.raw,
                                    pm.status.is_ready() ? "" : " (!ready)");
+
+                            // Write CSV line to SD card
+                            char csv[128];
+                            snprintf(csv, sizeof(csv),
+                                     "%s,%.1f,%.1f,%.1f,%.1f,%.1f,0x%04X",
+                                     dt_str, pm.pm1, pm.pm25, pm.pm10,
+                                     pm.temperature, pm.humidity,
+                                     pm.status.raw);
+                            datalog::append(csv);
                         } else {
-                            printf("[nextpm] Read failed\n");
+                            printf("[data] %s  PM read failed\n", dt_str);
                         }
+
                         next_sensor_read = now + device_mode::interval_ms();
                     }
 

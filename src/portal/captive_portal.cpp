@@ -5,6 +5,8 @@
 #include "../modem/modem.h"
 #include "../sensors/nextpm.h"
 #include "../sensors/ds3231.h"
+#include "../storage/sdcard.h"
+#include "../storage/datalog.h"
 #include "../device_mode.h"
 #include "../logger.h"
 
@@ -306,6 +308,8 @@ static const char DASH_RTC_CARD[] =
     "Synchroniser avec le navigateur</button>"
     "</div>";
 
+// SD card is built dynamically in compose_dashboard()
+
 static const char DASH_LOGS_CARD[] =
     "<div class=\"cd act\"><h2>&#128196; Logs "
     "<button class=\"ref\" onclick=\"loadLogs()\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
@@ -418,7 +422,7 @@ static const char REBOOT_PAGE_BODY[] =
 // =====================================================================
 
 // Large buffer for composing pages
-static char s_page_buf[12288];
+static char s_page_buf[14336];
 static int s_page_buf_len = 0;
 
 // Build HTTP response with headers included
@@ -437,7 +441,7 @@ static int compose_http_response(char* buf, int buf_size, const char* body, int 
 }
 
 // Temporary buffer for HTML body before adding headers
-static char s_body_tmp[11000];
+static char s_body_tmp[13000];
 
 static void compose_index_page() {
     char* p = s_body_tmp;
@@ -721,6 +725,60 @@ static void compose_dashboard(bool is_ap_mode) {
     // --- RTC card ---
     APP(DASH_RTC_CARD);
 
+    // --- SD card ---
+    {
+        const sdcard::Info& sd = sdcard::get_info();
+        const char* sd_status;
+        const char* sd_cls;
+        const char* sd_type = "&mdash;";
+        char sd_cap[32] = "&mdash;";
+        char sd_lines[32] = "&mdash;";
+        char sd_size[32] = "&mdash;";
+
+        if (sd.detected) {
+            sd_status = "D&eacute;tect&eacute;e";
+            sd_cls = "ok";
+            switch (sd.type) {
+                case sdcard::CardType::SD_V1: sd_type = "SDv1"; break;
+                case sdcard::CardType::SD_V2: sd_type = "SDv2"; break;
+                case sdcard::CardType::SDHC:  sd_type = "SDHC"; break;
+                default: break;
+            }
+            snprintf(sd_cap, sizeof(sd_cap), "%lu MB", (unsigned long)sd.capacity_mb);
+            snprintf(sd_lines, sizeof(sd_lines), "%lu", (unsigned long)datalog::get_line_count());
+            uint32_t db = datalog::get_data_bytes();
+            if (db >= 1024 * 1024)
+                snprintf(sd_size, sizeof(sd_size), "%.1f MB", db / (1024.0f * 1024.0f));
+            else if (db >= 1024)
+                snprintf(sd_size, sizeof(sd_size), "%.1f KB", db / 1024.0f);
+            else
+                snprintf(sd_size, sizeof(sd_size), "%lu B", (unsigned long)db);
+        } else {
+            sd_status = "Non d&eacute;tect&eacute;e";
+            sd_cls = "npm-err";
+        }
+
+        APPF("<div class=\"cd\"><h2>&#128190; Carte SD</h2>"
+             "<div class=\"r\"><span class=\"l\">Status</span>"
+             "<span class=\"v %s\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Type</span>"
+             "<span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Capacit&eacute;</span>"
+             "<span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Lignes CSV</span>"
+             "<span class=\"v\">%s</span></div>"
+             "<div class=\"r\"><span class=\"l\">Taille donn&eacute;es</span>"
+             "<span class=\"v\">%s</span></div>",
+             sd_cls, sd_status, sd_type, sd_cap, sd_lines, sd_size);
+
+        if (sd.detected) {
+            APP("<a href=\"/sd-csv\" download=\"mobileair.csv\" style=\"text-decoration:none\">"
+                "<button type=\"button\">&#128229; T&eacute;l&eacute;charger CSV</button></a>");
+        }
+
+        APP("</div>");
+    }
+
     // --- Logs card ---
     APP(DASH_LOGS_CARD);
 
@@ -904,6 +962,27 @@ static void compose_rtc_test_response() {
         "\r\n%s", json_len, json);
 }
 
+// --- SD CSV download ---
+// The HTTP header is stored in s_sd_csv_hdr_buf.
+// Data is streamed from SD card via fs_read_custom.
+static char s_sd_csv_hdr_buf[256];
+static int  s_sd_csv_hdr_len = 0;
+static bool s_serving_sd_csv = false;
+static uint32_t s_sd_csv_data_len = 0;  // CSV payload size
+
+static void prepare_sd_csv_download() {
+    datalog::flush();
+    s_sd_csv_data_len = datalog::get_data_bytes();
+
+    s_sd_csv_hdr_len = snprintf(s_sd_csv_hdr_buf, sizeof(s_sd_csv_hdr_buf),
+        "HTTP/1.0 200 OK\r\n"
+        "Content-Type: text/csv; charset=utf-8\r\n"
+        "Content-Disposition: attachment; filename=\"mobileair.csv\"\r\n"
+        "Content-Length: %lu\r\n"
+        "Connection: close\r\n"
+        "\r\n", (unsigned long)s_sd_csv_data_len);
+}
+
 static void compose_led_test_response() {
     char at_resp[256] = {};
     bool ok = modem::send_at("AT+UGPIOC=16,2", at_resp, sizeof(at_resp), 3000);
@@ -1006,6 +1085,16 @@ int fs_open_custom(struct fs_file* file, const char* name) {
         return 1;
     }
 
+    if (strcmp(name, "/sd-csv") == 0) {
+        prepare_sd_csv_download();
+        s_serving_sd_csv = true;
+        file->data = NULL;
+        file->len = s_sd_csv_hdr_len + (int)s_sd_csv_data_len;
+        file->index = 0;
+        file->flags = FS_FILE_FLAGS_HEADER_INCLUDED;
+        return 1;
+    }
+
     if (strcmp(name, "/logs") == 0) {
         compose_logs_response();
         file_serve(file, s_logs_buf, s_logs_buf_len);
@@ -1059,14 +1148,42 @@ int fs_open_custom(struct fs_file* file, const char* name) {
 
 void fs_close_custom(struct fs_file* file) {
     (void)file;
+    s_serving_sd_csv = false;
 }
 
 int fs_read_custom(struct fs_file* file, char* buffer, int count) {
     int remaining = file->len - file->index;
     if (remaining <= 0) return FS_READ_EOF;
 
-    const char* data = s_serve_ptr;
     int to_read = (count < remaining) ? count : remaining;
+
+    if (s_serving_sd_csv) {
+        // Stream: first the HTTP header, then CSV data from SD card
+        int copied = 0;
+        int pos = file->index;
+
+        // Serve HTTP header portion
+        if (pos < s_sd_csv_hdr_len) {
+            int hdr_avail = s_sd_csv_hdr_len - pos;
+            int hdr_chunk = (to_read < hdr_avail) ? to_read : hdr_avail;
+            memcpy(buffer, s_sd_csv_hdr_buf + pos, hdr_chunk);
+            copied += hdr_chunk;
+            pos += hdr_chunk;
+        }
+
+        // Serve CSV data from SD card
+        if (copied < to_read && pos >= s_sd_csv_hdr_len) {
+            uint32_t data_offset = pos - s_sd_csv_hdr_len;
+            int got = datalog::read_data(buffer + copied, to_read - copied, data_offset);
+            copied += got;
+        }
+
+        file->index += copied;
+        return copied;
+    }
+
+    // Normal in-memory serve
+    const char* data = s_serve_ptr;
     memcpy(buffer, data + file->index, to_read);
     file->index += to_read;
     return to_read;
