@@ -4,6 +4,7 @@
 #include "../wifi/wifi_manager.h"
 #include "../modem/modem.h"
 #include "../sensors/nextpm.h"
+#include "../sensors/ds3231.h"
 #include "../device_mode.h"
 #include "../logger.h"
 
@@ -291,6 +292,20 @@ static const char DASH_MODEM_CARD[] =
     "Activer LED status</button>"
     "</div>";
 
+static const char DASH_RTC_CARD[] =
+    "<div class=\"cd\"><h2>&#128336; Horloge RTC</h2>"
+    "<div class=\"r\"><span class=\"l\">Date / Heure</span>"
+    "<span class=\"v\" id=\"rtcdt\">&mdash;</span></div>"
+    "<div class=\"r\"><span class=\"l\">Temp&eacute;rature</span>"
+    "<span class=\"v\" id=\"rtctp\">&mdash;</span></div>"
+    "<div class=\"r\"><span class=\"l\">Synchro</span>"
+    "<span class=\"v\" id=\"rtcsy\">&mdash;</span></div>"
+    "<button type=\"button\" onclick=\"testRtc()\" id=\"rb\">"
+    "Lire le RTC</button>"
+    "<button type=\"button\" onclick=\"syncRtc()\" id=\"rsb\">"
+    "Synchroniser avec le navigateur</button>"
+    "</div>";
+
 static const char DASH_LOGS_CARD[] =
     "<div class=\"cd act\"><h2>&#128196; Logs "
     "<button class=\"ref\" onclick=\"loadLogs()\" title=\"Rafra\\u00eechir\">&#x1F504;</button>"
@@ -348,6 +363,35 @@ static const char DASH_JS[] =
     "}).catch(function(){"
     "box.textContent='Erreur de chargement';"
     "});}"
+    "function testRtc(){"
+    "var b=document.getElementById('rb'),dt=document.getElementById('rtcdt'),"
+    "tp=document.getElementById('rtctp');"
+    "b.disabled=true;b.textContent='Lecture...';"
+    "fetch('/rtc-test').then(function(x){return x.json()}).then(function(d){"
+    "dt.textContent=d.datetime||'Erreur';dt.className='v '+(d.ok?'ok':'');"
+    "if(d.temperature)tp.textContent=d.temperature;tp.className='v '+(d.ok?'ok':'');"
+    "b.disabled=false;b.textContent='Lire le RTC';"
+    "}).catch(function(){"
+    "dt.textContent='Erreur r\\u00e9seau';dt.className='v';"
+    "b.disabled=false;b.textContent='Lire le RTC';"
+    "});}"
+    "function syncRtc(){"
+    "var b=document.getElementById('rsb'),sy=document.getElementById('rtcsy');"
+    "b.disabled=true;b.textContent='Synchro...';"
+    "var d=new Date();"
+    "var body='Y='+d.getUTCFullYear()+'&M='+(d.getUTCMonth()+1)+'&D='+d.getUTCDate()"
+    "+'&h='+d.getUTCHours()+'&m='+d.getUTCMinutes()+'&s='+d.getUTCSeconds()"
+    "+'&w='+d.getUTCDay();"
+    "fetch('/rtc-set',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})"
+    ".then(function(x){return x.json()}).then(function(r){"
+    "sy.textContent=r.ok?r.datetime:'Erreur';sy.className='v '+(r.ok?'ok':'');"
+    "b.disabled=false;b.textContent='Synchroniser avec le navigateur';"
+    "if(r.ok)testRtc();"
+    "}).catch(function(){"
+    "sy.textContent='Erreur r\\u00e9seau';sy.className='v';"
+    "b.disabled=false;b.textContent='Synchroniser avec le navigateur';"
+    "});}"
+    "syncRtc();"
     "function setMode(m){"
     "fetch('/set-mode-'+m).then(function(x){return x.json()}).then(function(d){"
     "if(d.ok)location.reload();"
@@ -674,6 +718,9 @@ static void compose_dashboard(bool is_ap_mode) {
     // --- Modem card ---
     APP(DASH_MODEM_CARD);
 
+    // --- RTC card ---
+    APP(DASH_RTC_CARD);
+
     // --- Logs card ---
     APP(DASH_LOGS_CARD);
 
@@ -709,6 +756,10 @@ static void compose_dashboard(bool is_ap_mode) {
 // --- Modem test JSON response ---
 static char s_modem_json_buf[512];
 static int s_modem_json_len = 0;
+
+// --- RTC test JSON response (dedicated buffer) ---
+static char s_rtc_json_buf[512];
+static int s_rtc_json_len = 0;
 
 static void compose_set_mode_response(DeviceMode mode) {
     device_mode::set(mode);
@@ -826,6 +877,33 @@ static void compose_sim_test_response() {
         "\r\n%s", json_len, json);
 }
 
+static void compose_rtc_test_response() {
+    ds3231::Data d = ds3231::read();
+
+    char json[256];
+    int json_len;
+    if (d.ok) {
+        int tv = (int)(d.temperature * 10);
+        json_len = snprintf(json, sizeof(json),
+            "{\"ok\":true,"
+            "\"datetime\":\"%02u/%02u/20%02u %02u:%02u:%02u\","
+            "\"temperature\":\"%d.%d \\u00b0C\"}",
+            d.dt.date, d.dt.month, d.dt.year,
+            d.dt.hours, d.dt.minutes, d.dt.seconds,
+            tv / 10, tv < 0 ? -(tv % 10) : tv % 10);
+    } else {
+        json_len = snprintf(json, sizeof(json),
+            "{\"ok\":false,\"datetime\":\"DS3231 non d\\u00e9tect\\u00e9\"}");
+    }
+
+    s_rtc_json_len = snprintf(s_rtc_json_buf, sizeof(s_rtc_json_buf),
+        "HTTP/1.0 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "\r\n%s", json_len, json);
+}
+
 static void compose_led_test_response() {
     char at_resp[256] = {};
     bool ok = modem::send_at("AT+UGPIOC=16,2", at_resp, sizeof(at_resp), 3000);
@@ -908,6 +986,17 @@ int fs_open_custom(struct fs_file* file, const char* name) {
     if (strcmp(name, "/sim-test") == 0) {
         compose_sim_test_response();
         file_serve(file, s_modem_json_buf, s_modem_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/rtc-set-result") == 0) {
+        file_serve(file, s_rtc_json_buf, s_rtc_json_len);
+        return 1;
+    }
+
+    if (strcmp(name, "/rtc-test") == 0) {
+        compose_rtc_test_response();
+        file_serve(file, s_rtc_json_buf, s_rtc_json_len);
         return 1;
     }
 
@@ -995,7 +1084,7 @@ err_t httpd_post_begin(void* connection, const char* uri,
                        int content_len, char* response_uri,
                        u16_t response_uri_len, u8_t* post_auto_wnd) {
     if (strcmp(uri, "/connect") == 0 || strcmp(uri, "/reboot") == 0
-        || strcmp(uri, "/wifi-forget") == 0) {
+        || strcmp(uri, "/wifi-forget") == 0 || strcmp(uri, "/rtc-set") == 0) {
         strncpy(s_post_uri, uri, sizeof(s_post_uri) - 1);
         s_post_buf_len = 0;
         s_post_content_len = content_len;
@@ -1078,6 +1167,49 @@ void httpd_post_finished(void* connection, char* response_uri, u16_t response_ur
         s_wifi_forget_requested = true;
         s_reboot_requested = true;
         snprintf(response_uri, response_uri_len, "/rebooting");
+        return;
+    }
+
+    if (strcmp(s_post_uri, "/rtc-set") == 0) {
+        char y_str[8], mo_str[4], d_str[4], h_str[4], mi_str[4], s_str[4], w_str[4];
+        extract_field(s_post_buf, "Y", y_str, sizeof(y_str));
+        extract_field(s_post_buf, "M", mo_str, sizeof(mo_str));
+        extract_field(s_post_buf, "D", d_str, sizeof(d_str));
+        extract_field(s_post_buf, "h", h_str, sizeof(h_str));
+        extract_field(s_post_buf, "m", mi_str, sizeof(mi_str));
+        extract_field(s_post_buf, "s", s_str, sizeof(s_str));
+        extract_field(s_post_buf, "w", w_str, sizeof(w_str));
+
+        ds3231::DateTime dt = {};
+        dt.year    = (uint8_t)(atoi(y_str) - 2000);
+        dt.month   = (uint8_t)atoi(mo_str);
+        dt.date    = (uint8_t)atoi(d_str);
+        dt.hours   = (uint8_t)atoi(h_str);
+        dt.minutes = (uint8_t)atoi(mi_str);
+        dt.seconds = (uint8_t)atoi(s_str);
+        dt.day     = (uint8_t)(atoi(w_str) == 0 ? 7 : atoi(w_str));  // JS: 0=Sun → DS3231: 7
+
+        bool ok = ds3231::set_time(dt);
+
+        char json[256];
+        int json_len;
+        if (ok) {
+            json_len = snprintf(json, sizeof(json),
+                "{\"ok\":true,\"datetime\":\"%02u/%02u/20%02u %02u:%02u:%02u\"}",
+                dt.date, dt.month, dt.year, dt.hours, dt.minutes, dt.seconds);
+        } else {
+            json_len = snprintf(json, sizeof(json),
+                "{\"ok\":false,\"datetime\":\"Erreur d'\\u00e9criture I2C\"}");
+        }
+
+        s_rtc_json_len = snprintf(s_rtc_json_buf, sizeof(s_rtc_json_buf),
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n"
+            "\r\n%s", json_len, json);
+
+        snprintf(response_uri, response_uri_len, "/rtc-set-result");
         return;
     }
 

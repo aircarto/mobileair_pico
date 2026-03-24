@@ -43,6 +43,7 @@ add_executable(mobileair_pico
     src/portal/dhcp_server.c
     src/modem/modem.cpp
     src/sensors/nextpm.cpp
+    src/sensors/ds3231.cpp
     src/device_mode.cpp
     src/logger.cpp
 )
@@ -61,6 +62,7 @@ target_link_libraries(mobileair_pico
     hardware_flash
     hardware_sync
     hardware_uart
+    hardware_i2c
     pico_cyw43_arch_lwip_poll
     pico_lwip_http
     pico_lwip_mdns

@@ -9,6 +9,7 @@
 #include "portal/captive_portal.h"
 #include "modem/modem.h"
 #include "sensors/nextpm.h"
+#include "sensors/ds3231.h"
 #include "device_mode.h"
 #include "logger.h"
 #include "lwip/apps/mdns.h"
@@ -194,6 +195,10 @@ int main() {
 
     // --- NextPM sensor ---
     nextpm::init();
+    printf("\n");
+
+    // --- RTC DS3231 ---
+    ds3231::init();
     printf("\n");
 
     // Press 'r' within 3s to erase WiFi credentials and force portal
